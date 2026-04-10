@@ -3,69 +3,78 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 举重裁判-终极修复</title>
-    <!-- 使用更稳定的 CDN 链接 -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <title>AI 举重裁判 - 强制修复版</title>
+    <!-- 换回最基础、兼容性最好的加载方式 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <style>
         body { background: #000; color: #0ff; font-family: sans-serif; margin: 0; text-align: center; }
-        #container { position: relative; width: 100vw; background: #111; overflow: hidden; line-height: 0; }
-        canvas { width: 100%; height: auto; background: #000; }
-        /* 关键：视频不能完全 display:none，否则部分手机会停止解码 */
-        #v { position: absolute; width: 1px; height: 1px; opacity: 0.1; pointer-events: none; }
-        .ui { padding: 10px; background: #222; display: flex; justify-content: space-around; font-size: 14px; }
-        .status { padding: 15px; color: #ff0; font-weight: bold; min-height: 20px; }
-        .controls { padding: 20px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-        .btn { background: #0ff; color: #000; border: none; padding: 15px; width: 85%; border-radius: 10px; font-weight: bold; font-size: 16px; }
-        #res { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); border: 2px solid #f0f; padding: 20px; display: none; z-index: 100; font-size: 24px; }
+        #box { width: 100vw; height: 75vw; background: #111; position: relative; border-bottom: 2px solid #f0f; }
+        canvas { width: 100%; height: 100%; display: block; }
+        video { position: absolute; width: 1px; height: 1px; opacity: 0.1; }
+        .data { padding: 10px; background: #222; display: flex; justify-content: space-around; font-size: 14px; }
+        .log { color: #ff0; padding: 10px; font-size: 12px; min-height: 40px; border: 1px solid #333; margin: 5px; }
+        .btn { background: #0ff; color: #000; border: none; padding: 15px; width: 90%; border-radius: 10px; font-weight: bold; margin: 8px 0; font-size: 16px; }
+        #res { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); border: 2px solid #fff; padding: 20px; display: none; font-size: 24px; z-index: 99; }
     </style>
 </head>
 <body>
 
-<div id="container">
-    <video id="v" playsinline muted webkit-playsinline crossorigin="anonymous"></video>
+<div id="box">
+    <video id="v" playsinline muted webkit-playsinline></video>
     <canvas id="c"></canvas>
     <div id="res">RESULT</div>
 </div>
 
-<div class="ui">
-    <span id="l">左: --°</span><span id="r">右: --°</span><span id="m">最小: --°</span>
+<div class="data">
+    <span id="deg">实时角度: --°</span> | <span id="min">最小角度: --°</span>
 </div>
 
-<div id="st" class="status">请点击下方按钮开始</div>
+<div id="log" class="log">系统状态：等待初始化...</div>
 
-<div class="controls">
-    <button class="btn" onclick="startCamera()">1. 开启实时监测</button>
-    <label class="btn" style="background:#f0f; color:#fff; text-align:center;">
+<div style="padding: 10px;">
+    <button class="btn" onclick="initSystem('cam')">1. 开启实时监测 (后置)</button>
+    <label class="btn" style="background:#f0f; color:#fff; display:block; margin:8px auto; line-height:15px; padding:18px 0;">
         2. 导入相册视频分析
         <input type="file" id="f" accept="video/*" style="display:none">
     </label>
 </div>
 
-<script type="module">
+<script>
     const v = document.getElementById('v');
     const c = document.getElementById('c');
     const ctx = c.getContext('2d');
-    const st = document.getElementById('st');
+    const log = document.getElementById('log');
     const res = document.getElementById('res');
-
+    
+    let pose;
     let minA = 180;
     let fault = false;
-    let active = false;
 
-    // 初始化 Pose 模型 (降低复杂度以保命)
-    const pose = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-    });
-    pose.setOptions({ modelComplexity: 0, smoothLandmarks: true, minDetectionConfidence: 0.5 });
-    
-    pose.onResults(results => {
-        if (!results.image) return;
-        if (c.width !== results.image.width) {
-            c.width = results.image.width;
-            c.height = results.image.height;
+    // 报错显示函数
+    function showLog(msg) { log.innerText = msg; console.log(msg); }
+
+    // 初始化 AI 引擎
+    async function initAI() {
+        showLog("正在加载 AI 引擎，请稍后...");
+        try {
+            pose = new Pose({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+            });
+            pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
+            pose.onResults(onResults);
+            showLog("AI 引擎加载完成！");
+            return true;
+        } catch (e) {
+            showLog("AI 加载失败: " + e.message);
+            return false;
         }
+    }
+
+    function onResults(results) {
+        if (!results.image) return;
+        c.width = results.image.width;
+        c.height = results.image.height;
         ctx.save();
         ctx.clearRect(0, 0, c.width, c.height);
         ctx.drawImage(results.image, 0, 0, c.width, c.height);
@@ -75,77 +84,75 @@
             const lm = results.poseLandmarks;
             const la = calc(lm[11], lm[13], lm[15]);
             const ra = calc(lm[12], lm[14], lm[16]);
-            document.getElementById('l').innerText = `左: ${Math.round(la)}°`;
-            document.getElementById('r').innerText = `右: ${Math.round(ra)}°`;
+            const cur = Math.min(la, ra);
+            
+            document.getElementById('deg').innerText = `实时: ${Math.round(cur)}°`;
             
             // 判罚逻辑：手腕高于肩膀
-            if (lm[15].y < lm[11].y) {
-                const cur = Math.min(la, ra);
+            if (lm[15].y < lm[11].y || lm[16].y < lm[12].y) {
                 if (cur < minA) minA = cur;
-                document.getElementById('m').innerText = `最小: ${Math.round(minA)}°`;
+                document.getElementById('min').innerText = `最小: ${Math.round(minA)}°`;
                 if (cur < 158) fault = true;
             }
         }
         ctx.restore();
-    });
+    }
 
     function calc(a, b, c) {
         let ang = Math.abs(Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x)) * 180 / Math.PI;
         return ang > 180 ? 360 - ang : ang;
     }
 
-    // 统一驱动引擎
-    async function loop() {
-        if (!active || v.paused || v.ended) {
-            if (v.ended) showRes();
-            return;
+    // 统一启动入口
+    async function initSystem(type) {
+        res.style.display = 'none';
+        minA = 180; fault = false;
+        
+        if (!pose) {
+            const ok = await initAI();
+            if (!ok) return;
         }
-        try {
-            await pose.send({ image: v });
-        } catch (e) { console.error(e); }
-        requestAnimationFrame(loop);
+
+        if (type === 'cam') {
+            showLog("正在请求摄像头...");
+            try {
+                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                v.srcObject = s;
+                v.play();
+                showLog("摄像头已开启，分析中...");
+                requestAnimationFrame(loop);
+            } catch (e) {
+                showLog("摄像头失败: " + e.name);
+            }
+        }
     }
 
-    function showRes() {
-        res.style.display = 'block';
-        if (fault || minA < 158) {
-            res.innerText = "NO LIFT 🔴"; res.style.color = "#f0f";
-        } else {
-            res.innerText = "GOOD LIFT ⚪"; res.style.color = "#fff";
-        }
-        st.innerText = "判定结束";
-    }
-
-    // 1. 实时预览
-    window.startCamera = async () => {
-        reset();
-        st.innerText = "正在开启摄像头...";
-        try {
-            const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-            v.srcObject = s;
-            v.play();
-            active = true;
-            loop();
-        } catch (e) { alert("摄像头启动失败，请检查HTTPS"); }
-    };
-
-    // 2. 视频分析
-    document.getElementById('f').onchange = (e) => {
+    // 视频文件处理
+    document.getElementById('f').onchange = async (e) => {
+        if (!pose) await initAI();
         const file = e.target.files[0];
         if (!file) return;
-        reset();
-        st.innerText = "载入成功，正在分析(请勿关闭)...";
+        
+        showLog("视频加载中...");
         v.srcObject = null;
         v.src = URL.createObjectURL(file);
-        v.play();
-        active = true;
-        loop();
+        v.onloadedmetadata = () => {
+            v.play();
+            showLog("分析中，请观察画面...");
+            requestAnimationFrame(loop);
+        };
+        v.onended = () => {
+            res.style.display = 'block';
+            res.innerText = (fault || minA < 158) ? "NO LIFT 🔴" : "GOOD LIFT ⚪";
+            res.style.color = (fault || minA < 158) ? "#f0f" : "#fff";
+            showLog("分析结束");
+        };
     };
 
-    function reset() {
-        minA = 180; fault = false; active = false;
-        res.style.display = 'none';
-        st.innerText = "";
+    async function loop() {
+        if (v.paused || v.ended) return;
+        await pose.send({ image: v });
+        requestAnimationFrame(loop);
     }
 </script>
 </body>
