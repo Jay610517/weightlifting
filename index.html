@@ -3,60 +3,64 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 举重裁判 - 后置镜头专业版</title>
+    <title>AI 举重裁判旗舰版</title>
     <script src="https://fastly.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
     <script src="https://fastly.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://fastly.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <style>
-        :root { --neon-blue: #00f2ff; --neon-pink: #ff00ff; }
-        body { background: #000; color: var(--neon-blue); font-family: monospace; margin: 0; text-align: center; }
-        .header { padding: 10px; border-bottom: 2px solid var(--neon-pink); font-size: 1.2rem; }
+        :root { --blue: #00f2ff; --pink: #ff00ff; }
+        body { background: #000; color: var(--blue); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; text-align: center; }
+        .header { padding: 15px; border-bottom: 2px solid var(--pink); font-weight: bold; }
         
-        #container { position: relative; width: 100%; max-width: 640px; margin: auto; background: #111; }
-        /* 确保没有镜像翻转 */
-        canvas, video { width: 100%; height: auto; transform: scaleX(1); }
+        #container { position: relative; width: 100%; max-width: 640px; margin: auto; background: #111; overflow: hidden; }
+        /* 强制取消所有镜像翻转 */
+        canvas, video { width: 100% !important; height: auto !important; transform: none !important; }
         video { display: none; }
 
-        .judge-box { background: rgba(20,20,30,0.9); padding: 15px; border-top: 2px solid var(--neon-blue); }
-        .lights { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
-        .light { width: 50px; height: 50px; border: 2px solid #333; transition: 0.2s; }
+        .judge-ui { background: rgba(20,20,30,0.95); padding: 15px; border-top: 2px solid var(--blue); }
+        .lights { display: flex; justify-content: center; gap: 20px; margin-bottom: 15px; }
+        .light { width: 55px; height: 55px; border: 2px solid #333; border-radius: 4px; }
         .white-light { background: #fff; box-shadow: 0 0 30px #fff; border-color: #fff; }
-        .red-light { background: var(--neon-pink); box-shadow: 0 0 30px var(--neon-pink); border-color: var(--neon-pink); }
+        .red-light { background: var(--pink); box-shadow: 0 0 30px var(--pink); border-color: var(--pink); }
         
-        #status { font-size: 1.1rem; color: #f3ea5f; margin: 10px 0; min-height: 1.5em; }
-        .data { display: flex; justify-content: space-around; font-size: 0.8rem; opacity: 0.8; }
+        #status { font-size: 1.2rem; color: #f3ea5f; margin: 10px 0; font-weight: bold; min-height: 1.5em; }
+        .angle-data { display: flex; justify-content: space-around; font-size: 0.9rem; margin-top: 10px; font-family: monospace; }
         
-        .btns { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-        .btn { background: transparent; border: 1px solid var(--neon-blue); color: var(--neon-blue); padding: 15px; font-size: 1rem; cursor: pointer; }
-        .btn:active { background: var(--neon-blue); color: #000; }
+        .controls { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .btn { background: #1a1a1a; border: 1px solid var(--blue); color: var(--blue); padding: 16px; font-size: 1rem; border-radius: 8px; cursor: pointer; }
+        .btn:active { background: var(--blue); color: #000; }
+        .btn-file { background: #333; border-style: dashed; }
     </style>
 </head>
 <body>
 
-<div class="header">AI JUDGE - PRO</div>
+<div class="header">CYBER-JUDGE PRO v1.4</div>
 
 <div id="container">
-    <video id="input_video" playsinline muted crossorigin="anonymous"></video>
+    <video id="input_video" playsinline muted crossorigin="anonymous" webkit-playsinline></video>
     <canvas id="output_canvas" width="640" height="480"></canvas>
 </div>
 
-<div class="judge-box">
+<div class="judge-ui">
     <div class="lights">
-        <div id="l1" class="light"></div>
-        <div id="l2" class="light"></div>
-        <div id="l3" class="light"></div>
+        <div id="l1" class="light"></div><div id="l2" class="light"></div><div id="l3" class="light"></div>
     </div>
-    <div id="status">等待输入源...</div>
-    <div class="data">
-        <span id="deg-l">L_ELBOW: --°</span>
-        <span id="deg-r">R_ELBOW: --°</span>
+    <div id="status">请初始化输入源</div>
+    <div class="angle-data">
+        <span id="deg-l">左肘: --°</span><span id="deg-r">右肘: --°</span>
     </div>
 </div>
 
-<div class="btns">
-    <button class="btn" onclick="startBackCamera()">开启后置摄像头 (LIVE)</button>
-    <button class="btn" onclick="document.getElementById('file-up').click()">导入相册视频 (FILE)</button>
-    <input type="file" id="file-up" accept="video/*" style="display:none">
+<div class="controls">
+    <!-- 尝试后置镜头 -->
+    <button class="btn" onclick="openCamera('environment')">开启后置摄像头 (推荐)</button>
+    <!-- 如果后置打不开，备用按钮 -->
+    <button class="btn" onclick="openCamera('user')" style="font-size: 0.8rem; opacity: 0.6;">切换前置/其他镜头</button>
+    
+    <label class="btn btn-file">
+        从相册导入视频分析
+        <input type="file" id="file-input" accept="video/*" style="display:none">
+    </label>
 </div>
 
 <script type="module">
@@ -66,14 +70,11 @@
     const statusText = document.getElementById('status');
     const lights = [document.getElementById('l1'), document.getElementById('l2'), document.getElementById('l3')];
 
-    // 核心算法：计算角度
     function calcAngle(a, b, c) {
-        let radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-        let angle = Math.abs(radians * 180.0 / Math.PI);
-        return angle > 180.0 ? 360 - angle : angle;
+        let ang = Math.abs(Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x)) * 180 / Math.PI;
+        return ang > 180 ? 360 - ang : ang;
     }
 
-    // AI 结果处理逻辑
     function onResults(results) {
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -84,75 +85,80 @@
             drawLandmarks(ctx, results.poseLandmarks, {color: '#ff00ff', lineWidth: 1, radius: 2});
 
             const lm = results.poseLandmarks;
-            // 获取关键点：11肩 13肘 15腕 (左) | 12肩 14肘 16腕 (右)
-            const lAngle = calcAngle(lm[11], lm[13], lm[15]);
-            const rAngle = calcAngle(lm[12], lm[14], lm[16]);
+            const lA = calcAngle(lm[11], lm[13], lm[15]);
+            const rA = calcAngle(lm[12], lm[14], lm[16]);
 
-            document.getElementById('deg-l').innerText = `L_ELBOW: ${Math.round(lAngle)}°`;
-            document.getElementById('deg-r').innerText = `R_ELBOW: ${Math.round(rAngle)}°`;
+            document.getElementById('deg-l').innerText = `左肘: ${Math.round(lA)}°`;
+            document.getElementById('deg-r').innerText = `右肘: ${Math.round(rA)}°`;
 
-            // 判罚逻辑：只有当手腕高于肩膀（上挺/抓举支撑阶段）才激活
-            const isLifting = (lm[15].y < lm[11].y) && (lm[16].y < lm[12].y);
+            // 判罚核心：手腕高度 y 值越小说明越高
+            const isOverhead = (lm[15].y < lm[11].y) && (lm[16].y < lm[12].y);
             
-            if (isLifting) {
-                // 规则：肘部角度小于 158 度视为补推 (Press-out)
-                if (lAngle < 158 || rAngle < 158) {
-                    statusText.innerText = "🔴 红灯: 检测到补推 (PRESS-OUT)";
+            if (isOverhead) {
+                if (lA < 158 || rA < 158) {
+                    statusText.innerText = "🔴 红灯: 补推 (PRESS-OUT)";
                     lights.forEach(l => l.className = 'light red-light');
                 } else {
-                    statusText.innerText = "⚪ 白灯: 成功 (GOOD LIFT)";
+                    statusText.innerText = "⚪ 白灯: 成功 (GOOD)";
                     lights.forEach(l => l.className = 'light white-light');
                 }
             } else {
-                statusText.innerText = "正在扫描动作...";
+                statusText.innerText = "扫描动作中...";
                 lights.forEach(l => l.className = 'light');
             }
         }
         ctx.restore();
     }
 
-    // 初始化 Pose 模型
     const pose = new Pose({
         locateFile: (file) => `https://fastly.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
     pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
     pose.onResults(onResults);
 
-    // 1. 启动后置摄像头 (强制环境模式)
-    window.startBackCamera = async () => {
-        statusText.innerText = "正在调用后置摄像头...";
+    // 摄像头逻辑
+    window.openCamera = async (mode) => {
+        statusText.innerText = "正在请求镜头...";
+        if (window.currentStream) {
+            window.currentStream.getTracks().forEach(track => track.stop());
+        }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { exact: "environment" } } 
+                video: { facingMode: mode, width: 640, height: 480 }
             });
+            window.currentStream = stream;
             video.srcObject = stream;
-        } catch (e) {
-            // 如果强制后置失败（如电脑端），则尝试普通开启
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                video.play();
+                startAI();
+            };
+        } catch (err) {
+            alert("无法开启指定镜头，请尝试另一个按钮或检查权限。");
         }
-        video.play();
-        runAI();
     };
 
-    // 2. 导入视频并强制分析
-    document.getElementById('file-up').onchange = (e) => {
+    // 视频文件逻辑
+    document.getElementById('file-input').onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        statusText.innerText = "载入视频中...";
+        statusText.innerText = "分析视频中...";
+        if (window.currentStream) {
+            window.currentStream.getTracks().forEach(track => track.stop());
+        }
         video.srcObject = null;
         video.src = URL.createObjectURL(file);
         video.onloadedmetadata = () => {
             video.play();
-            runAI();
+            startAI();
         };
     };
 
-    // 循环驱动 AI 引擎
-    async function runAI() {
+    // 统一 AI 驱动引擎
+    async function startAI() {
         if (video.paused || video.ended) return;
         await pose.send({ image: video });
-        requestAnimationFrame(runAI);
+        // 使用 requestAnimationFrame 保证高频率检测
+        requestAnimationFrame(startAI);
     }
 </script>
 
