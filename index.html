@@ -3,147 +3,150 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 举重裁判-强制解码版</title>
-    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <title>AI 举重裁判-终极修复</title>
+    <!-- 使用更稳定的 CDN 链接 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <style>
-        body { background: #000; color: #0ff; font-family: sans-serif; margin: 0; overflow: hidden; text-align: center; }
-        /* 点击区域全屏化 */
-        #click-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); }
-        #canvas-container { width: 100vw; height: 70vw; background: #111; position: relative; border-bottom: 2px solid #f0f; }
-        canvas { width: 100%; height: 100%; object-fit: contain; }
-        video { display: none; }
-        .ui { padding: 10px; background: #222; font-size: 0.8rem; display: flex; justify-content: space-around; }
-        #status { padding: 15px; color: #ff0; font-weight: bold; font-size: 1.1rem; }
-        .btn-wrap { position: fixed; bottom: 20px; width: 100%; z-index: 20; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-        .btn { background: #0ff; color: #000; border: none; padding: 15px 40px; border-radius: 30px; font-weight: bold; width: 80%; }
-        #result-tag { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; font-size: 3rem; font-weight: bold; z-index: 100; text-shadow: 0 0 20px #000; }
+        body { background: #000; color: #0ff; font-family: sans-serif; margin: 0; text-align: center; }
+        #container { position: relative; width: 100vw; background: #111; overflow: hidden; line-height: 0; }
+        canvas { width: 100%; height: auto; background: #000; }
+        /* 关键：视频不能完全 display:none，否则部分手机会停止解码 */
+        #v { position: absolute; width: 1px; height: 1px; opacity: 0.1; pointer-events: none; }
+        .ui { padding: 10px; background: #222; display: flex; justify-content: space-around; font-size: 14px; }
+        .status { padding: 15px; color: #ff0; font-weight: bold; min-height: 20px; }
+        .controls { padding: 20px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+        .btn { background: #0ff; color: #000; border: none; padding: 15px; width: 85%; border-radius: 10px; font-weight: bold; font-size: 16px; }
+        #res { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); border: 2px solid #f0f; padding: 20px; display: none; z-index: 100; font-size: 24px; }
     </style>
 </head>
 <body>
 
-<div id="canvas-container">
-    <canvas id="out_canvas"></canvas>
-    <div id="result-tag">RESULT</div>
+<div id="container">
+    <video id="v" playsinline muted webkit-playsinline crossorigin="anonymous"></video>
+    <canvas id="c"></canvas>
+    <div id="res">RESULT</div>
 </div>
 
 <div class="ui">
-    <span id="deg-l">L: --°</span><span id="deg-r">R: --°</span><span id="min-a">MIN: --°</span>
+    <span id="l">左: --°</span><span id="r">右: --°</span><span id="m">最小: --°</span>
 </div>
 
-<div id="status">第一步：点击下方按钮导入视频</div>
+<div id="st" class="status">请点击下方按钮开始</div>
 
-<!-- 覆盖全屏的点击层 -->
-<div id="click-layer" style="display:none">
-    <div style="font-size: 1.5rem; color: #fff;">已载入视频</div>
-    <div style="margin-top:20px; color:#0ff;">👇 点击屏幕任意位置开始分析 👇</div>
-</div>
-
-<video id="in_video" playsinline muted crossorigin="anonymous" webkit-playsinline></video>
-
-<div class="btn-wrap">
+<div class="controls">
+    <button class="btn" onclick="startCamera()">1. 开启实时监测</button>
     <label class="btn" style="background:#f0f; color:#fff; text-align:center;">
-        导入相册视频
-        <input type="file" id="file_in" accept="video/*" style="display:none">
+        2. 导入相册视频分析
+        <input type="file" id="f" accept="video/*" style="display:none">
     </label>
-    <button class="btn" onclick="startCamera()">开启实时监测</button>
 </div>
 
 <script type="module">
-    const video = document.getElementById('in_video');
-    const canvas = document.getElementById('out_canvas');
-    const ctx = canvas.getContext('2d');
-    const status = document.getElementById('status');
-    const clickLayer = document.getElementById('click-layer');
-    const resultTag = document.getElementById('result-tag');
+    const v = document.getElementById('v');
+    const c = document.getElementById('c');
+    const ctx = c.getContext('2d');
+    const st = document.getElementById('st');
+    const res = document.getElementById('res');
 
-    let minAngle = 180;
-    let hasFault = false;
+    let minA = 180;
+    let fault = false;
+    let active = false;
 
-    // 初始化 Pose
-    const pose = new Pose({ locateFile: (file) => `https://fastly.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-    pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
+    // 初始化 Pose 模型 (降低复杂度以保命)
+    const pose = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+    pose.setOptions({ modelComplexity: 0, smoothLandmarks: true, minDetectionConfidence: 0.5 });
     
-    pose.onResults(res => {
-        if (res.image.width !== canvas.width) {
-            canvas.width = res.image.width;
-            canvas.height = res.image.height;
+    pose.onResults(results => {
+        if (!results.image) return;
+        if (c.width !== results.image.width) {
+            c.width = results.image.width;
+            c.height = results.image.height;
         }
-        ctx.drawImage(res.image, 0, 0);
-        if (res.poseLandmarks) {
-            drawConnectors(ctx, res.poseLandmarks, POSE_CONNECTIONS, {color: '#0ff', lineWidth: 4});
-            const lm = res.poseLandmarks;
-            const lA = calcAngle(lm[11], lm[13], lm[15]);
-            const rA = calcAngle(lm[12], lm[14], lm[16]);
-            document.getElementById('deg-l').innerText = `L: ${Math.round(lA)}°`;
-            document.getElementById('deg-r').innerText = `R: ${Math.round(rA)}°`;
+        ctx.save();
+        ctx.clearRect(0, 0, c.width, c.height);
+        ctx.drawImage(results.image, 0, 0, c.width, c.height);
+        
+        if (results.poseLandmarks) {
+            drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#0ff', lineWidth: 4});
+            const lm = results.poseLandmarks;
+            const la = calc(lm[11], lm[13], lm[15]);
+            const ra = calc(lm[12], lm[14], lm[16]);
+            document.getElementById('l').innerText = `左: ${Math.round(la)}°`;
+            document.getElementById('r').innerText = `右: ${Math.round(ra)}°`;
             
+            // 判罚逻辑：手腕高于肩膀
             if (lm[15].y < lm[11].y) {
-                const cur = Math.min(lA, rA);
-                if (cur < minAngle) minAngle = cur;
-                document.getElementById('min-a').innerText = `MIN: ${Math.round(minAngle)}°`;
-                if (cur < 158) hasFault = true;
+                const cur = Math.min(la, ra);
+                if (cur < minA) minA = cur;
+                document.getElementById('m').innerText = `最小: ${Math.round(minA)}°`;
+                if (cur < 158) fault = true;
             }
         }
+        ctx.restore();
     });
 
-    function calcAngle(a, b, c) {
+    function calc(a, b, c) {
         let ang = Math.abs(Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x)) * 180 / Math.PI;
         return ang > 180 ? 360 - ang : ang;
     }
 
-    // 导入文件逻辑
-    document.getElementById('file_in').onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        status.innerText = "读取视频中...";
-        const url = URL.createObjectURL(file);
-        video.src = url;
-        video.load();
-        
-        // 显示全屏点击层
-        clickLayer.style.display = 'flex';
-        resultTag.style.display = 'none';
-        minAngle = 180; hasFault = false;
-    };
-
-    // 全屏点击层触发器
-    clickLayer.onclick = () => {
-        clickLayer.style.display = 'none';
-        status.innerText = "分析中，请稍后...";
-        video.play();
-        run();
-    };
-
-    async function run() {
-        if (video.paused || video.ended) {
-            if (video.ended) finish();
+    // 统一驱动引擎
+    async function loop() {
+        if (!active || v.paused || v.ended) {
+            if (v.ended) showRes();
             return;
         }
-        await pose.send({ image: video });
-        requestAnimationFrame(run);
+        try {
+            await pose.send({ image: v });
+        } catch (e) { console.error(e); }
+        requestAnimationFrame(loop);
     }
 
-    function finish() {
-        resultTag.style.display = 'block';
-        if (hasFault || minAngle < 158) {
-            resultTag.innerText = "NO LIFT 🔴";
-            resultTag.style.color = "#f0f";
+    function showRes() {
+        res.style.display = 'block';
+        if (fault || minA < 158) {
+            res.innerText = "NO LIFT 🔴"; res.style.color = "#f0f";
         } else {
-            resultTag.innerText = "GOOD LIFT ⚪";
-            resultTag.style.color = "#fff";
+            res.innerText = "GOOD LIFT ⚪"; res.style.color = "#fff";
         }
-        status.innerText = "分析完毕";
+        st.innerText = "判定结束";
     }
 
+    // 1. 实时预览
     window.startCamera = async () => {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        video.srcObject = stream;
-        video.play();
-        run();
+        reset();
+        st.innerText = "正在开启摄像头...";
+        try {
+            const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+            v.srcObject = s;
+            v.play();
+            active = true;
+            loop();
+        } catch (e) { alert("摄像头启动失败，请检查HTTPS"); }
     };
+
+    // 2. 视频分析
+    document.getElementById('f').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        reset();
+        st.innerText = "载入成功，正在分析(请勿关闭)...";
+        v.srcObject = null;
+        v.src = URL.createObjectURL(file);
+        v.play();
+        active = true;
+        loop();
+    };
+
+    function reset() {
+        minA = 180; fault = false; active = false;
+        res.style.display = 'none';
+        st.innerText = "";
+    }
 </script>
 </body>
 </html>
