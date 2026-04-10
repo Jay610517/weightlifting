@@ -3,71 +3,40 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 举重裁判-专业视频分析版</title>
+    <title>AI 举重裁判-大视频兼容版</title>
     <script src="https://fastly.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
     <script src="https://fastly.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://fastly.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <style>
-        :root { --blue: #00f2ff; --pink: #ff00ff; }
-        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; text-align: center; overflow-x: hidden; }
-        .header { background: #111; padding: 15px; border-bottom: 2px solid var(--pink); font-size: 1.1rem; }
-        
-        /* 画布区域 */
-        #display-container { position: relative; width: 100%; max-width: 640px; margin: 10px auto; background: #111; border: 1px solid var(--blue); }
+        body { background: #000; color: #00f2ff; font-family: sans-serif; margin: 0; text-align: center; }
+        #container { position: relative; width: 100%; max-width: 500px; margin: auto; background: #111; min-height: 300px; }
         canvas { width: 100%; height: auto; display: block; }
-        video { display: none; } /* 隐藏原生视频标签 */
-
-        /* 裁判灯与结论 */
-        .judge-panel { padding: 15px; background: rgba(20,20,30,0.9); }
-        .lights { display: flex; justify-content: center; gap: 15px; margin-bottom: 10px; }
-        .light { width: 45px; height: 45px; border: 2px solid #333; border-radius: 5px; }
-        .white-light { background: #fff; box-shadow: 0 0 20px #fff; }
-        .red-light { background: var(--pink); box-shadow: 0 0 20px var(--pink); }
-
-        #status { color: #f3ea5f; font-weight: bold; margin: 10px; font-size: 1.1rem; min-height: 1.5em; }
-        .data-row { display: flex; justify-content: space-around; font-size: 0.8rem; font-family: monospace; padding: 5px; color: var(--blue); }
-
-        /* 结论大屏 */
-        #final-overlay { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            padding: 30px; background: rgba(0,0,0,0.9); border: 4px solid var(--blue);
-            display: none; z-index: 999; font-size: 2.5rem; font-weight: bold; width: 80%;
-        }
-
-        /* 按钮 */
-        .btn-group { padding: 20px; display: flex; flex-direction: column; gap: 12px; max-width: 400px; margin: auto; }
-        .btn { background: #111; border: 1px solid var(--blue); color: var(--blue); padding: 18px; font-size: 1rem; border-radius: 10px; cursor: pointer; }
-        .btn:active { background: var(--blue); color: #000; }
-        .btn-file { background: #1a1a30; border-color: var(--pink); }
+        video { display: none; }
+        .ui-box { padding: 15px; background: #111; border-top: 1px solid #333; }
+        .status { color: #f3ea5f; font-weight: bold; margin: 10px; font-size: 1.1rem; }
+        .btn { background: #00f2ff; color: #000; border: none; padding: 15px; width: 80%; border-radius: 10px; font-weight: bold; margin: 10px 0; font-size: 1rem; }
+        #result { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); border: 3px solid #ff00ff; padding: 20px; font-size: 2rem; display: none; z-index: 100; width: 70%; }
     </style>
 </head>
 <body>
 
-<div class="header">AI WEIGHTLIFTING JUDGE v1.6</div>
+<div style="padding:10px; background:#222;">AI JUDGE v1.7 (Stable)</div>
 
-<div id="display-container">
-    <video id="input_video" playsinline muted crossorigin="anonymous" webkit-playsinline></video>
+<div id="container">
+    <video id="input_video" playsinline muted webkit-playsinline></video>
     <canvas id="output_canvas" width="640" height="480"></canvas>
-    <div id="final-overlay">RESULT</div>
+    <div id="result">判定中...</div>
 </div>
 
-<div class="judge-panel">
-    <div class="lights">
-        <div id="l1" class="light"></div><div id="l2" class="light"></div><div id="l3" class="light"></div>
-    </div>
-    <div id="status">等待选择视频或开启相机...</div>
-    <div class="data-row">
-        <span id="deg-l">L: --°</span>
-        <span id="deg-r">R: --°</span>
-        <span id="min-angle">MAX弯曲: --°</span>
-    </div>
-</div>
-
-<div class="btn-group">
-    <button class="btn" onclick="startCamera()">① 开启后置摄像头监测</button>
-    <label class="btn btn-file">
-        ② 从相册导入视频分析结论
-        <input type="file" id="file-input" accept="video/*" style="display:none">
+<div class="ui-box">
+    <div id="status" class="status">等待导入视频...</div>
+    <div id="data" style="font-size:0.8rem;">最小肘角记录: --°</div>
+    
+    <button class="btn" onclick="startCam()">开启实时监测</button>
+    
+    <label style="display:block;">
+        <div class="btn" style="background:#ff00ff; color:#fff; margin:auto;">选择相册视频分析</div>
+        <input type="file" id="file_up" accept="video/*" style="display:none">
     </label>
 </div>
 
@@ -75,129 +44,87 @@
     const video = document.getElementById('input_video');
     const canvas = document.getElementById('output_canvas');
     const ctx = canvas.getContext('2d');
-    const statusText = document.getElementById('status');
-    const overlay = document.getElementById('final-overlay');
-    const lights = [document.getElementById('l1'), document.getElementById('l2'), document.getElementById('l3')];
+    const status = document.getElementById('status');
+    const resultBox = document.getElementById('result');
 
     let minAngle = 180;
     let hasFault = false;
-    let isVideoMode = false;
 
-    // 计算角度
+    // 1. 初始化 AI (使用最低功耗模式以兼容大视频)
+    const pose = new Pose({ locateFile: (file) => `https://fastly.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+    pose.setOptions({ modelComplexity: 0, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+    pose.onResults(results => {
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        if (results.poseLandmarks) {
+            drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00f2ff', lineWidth: 2});
+            const lm = results.poseLandmarks;
+            const lA = calcAngle(lm[11], lm[13], lm[15]);
+            const rA = calcAngle(lm[12], lm[14], lm[16]);
+            const curMin = Math.min(lA, rA);
+            
+            // 判罚逻辑：手腕高于肩膀
+            if (lm[15].y < lm[11].y && lm[16].y < lm[12].y) {
+                if (curMin < minAngle) minAngle = curMin;
+                document.getElementById('data').innerText = `当前最小肘角: ${Math.round(minAngle)}°`;
+                if (curMin < 158) hasFault = true;
+            }
+        }
+        ctx.restore();
+    });
+
     function calcAngle(a, b, c) {
         let ang = Math.abs(Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x)) * 180 / Math.PI;
         return ang > 180 ? 360 - ang : ang;
     }
 
-    // AI 结果处理
-    function onResults(results) {
-        ctx.save();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-
-        if (results.poseLandmarks) {
-            drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00f2ff', lineWidth: 2});
-            drawLandmarks(ctx, results.poseLandmarks, {color: '#ff00ff', lineWidth: 1, radius: 2});
-
-            const lm = results.poseLandmarks;
-            const lA = calcAngle(lm[11], lm[13], lm[15]);
-            const rA = calcAngle(lm[12], lm[14], lm[16]);
-            const currentMin = Math.min(lA, rA);
-
-            document.getElementById('deg-l').innerText = `L: ${Math.round(lA)}°`;
-            document.getElementById('deg-r').innerText = `R: ${Math.round(rA)}°`;
-
-            // 判罚逻辑：手腕高于肩膀时开始检测
-            if (lm[15].y < lm[11].y && lm[16].y < lm[12].y) {
-                if (currentMin < minAngle) minAngle = currentMin;
-                document.getElementById('min-angle').innerText = `MAX弯曲: ${Math.round(minAngle)}°`;
-
-                if (currentMin < 158) {
-                    hasFault = true;
-                    statusText.innerText = "⚠️ 检测到补推 (PRESS-OUT)";
-                    lights.forEach(l => l.className = 'light red-light');
-                } else {
-                    statusText.innerText = "支撑分析中...";
-                    lights.forEach(l => l.className = 'light white-light');
-                }
-            }
-        }
-        ctx.restore();
-    }
-
-    const pose = new Pose({ locateFile: (file) => `https://fastly.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-    pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
-    pose.onResults(onResults);
-
-    // 摄像头启动
-    window.startCamera = async () => {
-        resetUI();
-        isVideoMode = false;
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-            video.srcObject = stream;
-            video.play();
-            requestAnimationFrame(processFrame);
-        } catch (e) { alert("摄像头无法开启，请检查HTTPS环境"); }
-    };
-
-    // 视频文件处理 (核心修复点)
-    document.getElementById('file-input').onchange = (e) => {
+    // 2. 视频处理逻辑
+    document.getElementById('file_up').onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        resetUI();
-        isVideoMode = true;
-        statusText.innerText = "正在读取视频并分析...";
-        
-        const url = URL.createObjectURL(file);
-        video.srcObject = null;
-        video.src = url;
-        
-        // 强制视频在后台播放
-        video.load();
-        video.play().then(() => {
-            requestAnimationFrame(processFrame);
-        }).catch(err => {
-            statusText.innerText = "点击画面开始分析";
-            canvas.onclick = () => { video.play(); requestAnimationFrame(processFrame); };
-        });
 
-        // 视频结束判定
-        video.onended = () => {
-            showResult();
+        // 重置状态
+        minAngle = 180; hasFault = false;
+        resultBox.style.display = 'none';
+        
+        status.innerText = "视频加载中，请点击屏幕开始...";
+        video.src = URL.createObjectURL(file);
+        
+        // 关键修复：点击屏幕强制播放（解决移动端拦截）
+        canvas.onclick = () => {
+            video.play();
+            status.innerText = "分析中，请勿关闭...";
+            process();
         };
     };
 
-    function resetUI() {
-        minAngle = 180;
-        hasFault = false;
-        overlay.style.display = 'none';
-        lights.forEach(l => l.className = 'light');
-        document.getElementById('min-angle').innerText = "MAX弯曲: --°";
+    async function process() {
+        if (video.paused || video.ended) {
+            if (video.ended) showFinal();
+            return;
+        }
+        await pose.send({ image: video });
+        requestAnimationFrame(process);
     }
 
-    function showResult() {
-        overlay.style.display = 'block';
+    function showFinal() {
+        resultBox.style.display = 'block';
         if (hasFault || minAngle < 158) {
-            overlay.innerText = "NO LIFT 🔴";
-            overlay.style.color = "#ff00ff";
-            overlay.style.borderColor = "#ff00ff";
-            statusText.innerText = "判定结束：动作失败";
+            resultBox.innerHTML = "<span style='color:#ff00ff'>NO LIFT 🔴</span><br><small style='font-size:1rem'>检测到补推</small>";
+            status.innerText = "判定结束：动作失败";
         } else {
-            overlay.innerText = "GOOD LIFT ⚪";
-            overlay.style.color = "#fff";
-            overlay.style.borderColor = "#fff";
-            statusText.innerText = "判定结束：动作成功";
+            resultBox.innerHTML = "<span style='color:#fff'>GOOD LIFT ⚪</span>";
+            status.innerText = "判定结束：动作成功";
         }
     }
 
-    // 循环引擎
-    async function processFrame() {
-        if (video.paused || video.ended) return;
-        await pose.send({ image: video });
-        requestAnimationFrame(processFrame);
-    }
+    window.startCam = async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = stream;
+        video.play();
+        process();
+    };
 </script>
-
 </body>
 </html>
