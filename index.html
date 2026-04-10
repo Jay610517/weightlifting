@@ -3,157 +3,177 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 举重裁判 - 强制修复版</title>
-    <!-- 换回最基础、兼容性最好的加载方式 -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <title>AI 举重裁判 - 稳定版</title>
+    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <style>
-        body { background: #000; color: #0ff; font-family: sans-serif; margin: 0; text-align: center; }
-        #box { width: 100vw; height: 75vw; background: #111; position: relative; border-bottom: 2px solid #f0f; }
-        canvas { width: 100%; height: 100%; display: block; }
-        video { position: absolute; width: 1px; height: 1px; opacity: 0.1; }
-        .data { padding: 10px; background: #222; display: flex; justify-content: space-around; font-size: 14px; }
-        .log { color: #ff0; padding: 10px; font-size: 12px; min-height: 40px; border: 1px solid #333; margin: 5px; }
-        .btn { background: #0ff; color: #000; border: none; padding: 15px; width: 90%; border-radius: 10px; font-weight: bold; margin: 8px 0; font-size: 16px; }
-        #res { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); border: 2px solid #fff; padding: 20px; display: none; font-size: 24px; z-index: 99; }
+        :root { --blue: #00f2ff; --pink: #ff00ff; }
+        body { background: #000; color: #fff; font-family: sans-serif; margin: 0; text-align: center; }
+        .header { background: #111; padding: 15px; border-bottom: 2px solid var(--pink); font-size: 1.1rem; }
+        
+        #display-container { position: relative; width: 100%; max-width: 640px; margin: 10px auto; background: #111; border: 1px solid var(--blue); }
+        canvas { width: 100%; height: auto; display: block; transform: scaleX(1); } /* 确保不镜像 */
+        video { display: none; }
+
+        .judge-panel { padding: 15px; background: rgba(20,20,30,0.9); }
+        .lights { display: flex; justify-content: center; gap: 15px; margin-bottom: 10px; }
+        .light { width: 45px; height: 45px; border: 2px solid #333; border-radius: 5px; }
+        .white-light { background: #fff; box-shadow: 0 0 20px #fff; }
+        .red-light { background: var(--pink); box-shadow: 0 0 20px var(--pink); }
+
+        #status { color: #f3ea5f; font-weight: bold; margin: 10px; font-size: 1.1rem; min-height: 1.5em; }
+        .data-row { display: flex; justify-content: space-around; font-size: 0.8rem; font-family: monospace; padding: 5px; color: var(--blue); }
+
+        #final-overlay { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            padding: 30px; background: rgba(0,0,0,0.9); border: 4px solid var(--blue);
+            display: none; z-index: 999; font-size: 2.2rem; font-weight: bold; width: 80%;
+        }
+
+        .btn-group { padding: 20px; display: flex; flex-direction: column; gap: 12px; max-width: 400px; margin: auto; }
+        .btn { background: #111; border: 1px solid var(--blue); color: var(--blue); padding: 18px; font-size: 1rem; border-radius: 10px; cursor: pointer; }
+        .btn:active { background: var(--blue); color: #000; }
+        .btn-file { background: #1a1a30; border-color: var(--pink); color: #fff; }
     </style>
 </head>
 <body>
 
-<div id="box">
-    <video id="v" playsinline muted webkit-playsinline></video>
-    <canvas id="c"></canvas>
-    <div id="res">RESULT</div>
+<div class="header">AI WEIGHTLIFTING JUDGE v1.6</div>
+
+<div id="display-container">
+    <video id="input_video" playsinline muted crossorigin="anonymous" webkit-playsinline></video>
+    <canvas id="output_canvas" width="640" height="480"></canvas>
+    <div id="final-overlay">RESULT</div>
 </div>
 
-<div class="data">
-    <span id="deg">实时角度: --°</span> | <span id="min">最小角度: --°</span>
+<div class="judge-panel">
+    <div class="lights">
+        <div id="l1" class="light"></div><div id="l2" class="light"></div><div id="l3" class="light"></div>
+    </div>
+    <div id="status">请选择视频或开启相机</div>
+    <div class="data-row">
+        <span id="deg-l">左肘: --°</span>
+        <span id="deg-r">右肘: --°</span>
+        <span id="min-angle">最大弯曲: --°</span>
+    </div>
 </div>
 
-<div id="log" class="log">系统状态：等待初始化...</div>
-
-<div style="padding: 10px;">
-    <button class="btn" onclick="initSystem('cam')">1. 开启实时监测 (后置)</button>
-    <label class="btn" style="background:#f0f; color:#fff; display:block; margin:8px auto; line-height:15px; padding:18px 0;">
-        2. 导入相册视频分析
-        <input type="file" id="f" accept="video/*" style="display:none">
+<div class="btn-group">
+    <button class="btn" onclick="startCamera()">① 开启实时监测 (后置)</button>
+    <label class="btn btn-file">
+        ② 导入相册视频分析
+        <input type="file" id="file-input" accept="video/*" style="display:none">
     </label>
 </div>
 
-<script>
-    const v = document.getElementById('v');
-    const c = document.getElementById('c');
-    const ctx = c.getContext('2d');
-    const log = document.getElementById('log');
-    const res = document.getElementById('res');
-    
-    let pose;
-    let minA = 180;
-    let fault = false;
+<script type="module">
+    const video = document.getElementById('input_video');
+    const canvas = document.getElementById('output_canvas');
+    const ctx = canvas.getContext('2d');
+    const statusText = document.getElementById('status');
+    const overlay = document.getElementById('final-overlay');
+    const lights = [document.getElementById('l1'), document.getElementById('l2'), document.getElementById('l3')];
 
-    // 报错显示函数
-    function showLog(msg) { log.innerText = msg; console.log(msg); }
+    let minAngle = 180;
+    let hasFault = false;
 
-    // 初始化 AI 引擎
-    async function initAI() {
-        showLog("正在加载 AI 引擎，请稍后...");
-        try {
-            pose = new Pose({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-            });
-            pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
-            pose.onResults(onResults);
-            showLog("AI 引擎加载完成！");
-            return true;
-        } catch (e) {
-            showLog("AI 加载失败: " + e.message);
-            return false;
-        }
+    function calcAngle(a, b, c) {
+        let ang = Math.abs(Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x)) * 180 / Math.PI;
+        return ang > 180 ? 360 - ang : ang;
     }
 
     function onResults(results) {
-        if (!results.image) return;
-        c.width = results.image.width;
-        c.height = results.image.height;
         ctx.save();
-        ctx.clearRect(0, 0, c.width, c.height);
-        ctx.drawImage(results.image, 0, 0, c.width, c.height);
-        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
         if (results.poseLandmarks) {
-            drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#0ff', lineWidth: 4});
+            drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00f2ff', lineWidth: 2});
+            drawLandmarks(ctx, results.poseLandmarks, {color: '#ff00ff', lineWidth: 1, radius: 2});
+
             const lm = results.poseLandmarks;
-            const la = calc(lm[11], lm[13], lm[15]);
-            const ra = calc(lm[12], lm[14], lm[16]);
-            const cur = Math.min(la, ra);
-            
-            document.getElementById('deg').innerText = `实时: ${Math.round(cur)}°`;
-            
-            // 判罚逻辑：手腕高于肩膀
-            if (lm[15].y < lm[11].y || lm[16].y < lm[12].y) {
-                if (cur < minA) minA = cur;
-                document.getElementById('min').innerText = `最小: ${Math.round(minA)}°`;
-                if (cur < 158) fault = true;
+            const lA = calcAngle(lm[11], lm[13], lm[15]);
+            const rA = calcAngle(lm[12], lm[14], lm[16]);
+            const currentMin = Math.min(lA, rA);
+
+            document.getElementById('deg-l').innerText = `左: ${Math.round(lA)}°`;
+            document.getElementById('deg-r').innerText = `右: ${Math.round(rA)}°`;
+
+            if (lm[15].y < lm[11].y && lm[16].y < lm[12].y) {
+                if (currentMin < minAngle) minAngle = currentMin;
+                document.getElementById('min-angle').innerText = `最大弯曲: ${Math.round(minAngle)}°`;
+                if (currentMin < 158) {
+                    hasFault = true;
+                    statusText.innerText = "⚠️ 检测到补推风险";
+                    lights.forEach(l => l.className = 'light red-light');
+                } else {
+                    statusText.innerText = "支撑分析中...";
+                    lights.forEach(l => l.className = 'light white-light');
+                }
             }
         }
         ctx.restore();
     }
 
-    function calc(a, b, c) {
-        let ang = Math.abs(Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x)) * 180 / Math.PI;
-        return ang > 180 ? 360 - ang : ang;
-    }
+    const pose = new Pose({ locateFile: (file) => `https://fastly.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+    pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+    pose.onResults(onResults);
 
-    // 统一启动入口
-    async function initSystem(type) {
-        res.style.display = 'none';
-        minA = 180; fault = false;
-        
-        if (!pose) {
-            const ok = await initAI();
-            if (!ok) return;
+    window.startCamera = async () => {
+        resetUI();
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+            video.srcObject = stream;
+            video.play();
+            requestAnimationFrame(processFrame);
+        } catch (e) { 
+            alert("无法开启后置镜头，尝试默认开启");
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            video.play();
+            requestAnimationFrame(processFrame);
         }
+    };
 
-        if (type === 'cam') {
-            showLog("正在请求摄像头...");
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                v.srcObject = s;
-                v.play();
-                showLog("摄像头已开启，分析中...");
-                requestAnimationFrame(loop);
-            } catch (e) {
-                showLog("摄像头失败: " + e.name);
-            }
-        }
-    }
-
-    // 视频文件处理
-    document.getElementById('f').onchange = async (e) => {
-        if (!pose) await initAI();
+    document.getElementById('file-input').onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
-        showLog("视频加载中...");
-        v.srcObject = null;
-        v.src = URL.createObjectURL(file);
-        v.onloadedmetadata = () => {
-            v.play();
-            showLog("分析中，请观察画面...");
-            requestAnimationFrame(loop);
+        resetUI();
+        statusText.innerText = "读取视频中，请稍后...";
+        video.src = URL.createObjectURL(file);
+        video.onloadedmetadata = () => {
+            video.play();
+            requestAnimationFrame(processFrame);
+            statusText.innerText = "分析中...若画面未动请点击屏幕";
         };
-        v.onended = () => {
-            res.style.display = 'block';
-            res.innerText = (fault || minA < 158) ? "NO LIFT 🔴" : "GOOD LIFT ⚪";
-            res.style.color = (fault || minA < 158) ? "#f0f" : "#fff";
-            showLog("分析结束");
+        video.onended = () => {
+            overlay.style.display = 'block';
+            if (hasFault || minAngle < 158) {
+                overlay.innerText = "NO LIFT 🔴";
+                overlay.style.color = "#ff00ff";
+            } else {
+                overlay.innerText = "GOOD LIFT ⚪";
+                overlay.style.color = "#fff";
+            }
         };
     };
 
-    async function loop() {
-        if (v.paused || v.ended) return;
-        await pose.send({ image: v });
-        requestAnimationFrame(loop);
+    // 点击画面强制激活视频播放（修复黑屏关键）
+    canvas.onclick = () => { video.play(); };
+
+    function resetUI() {
+        minAngle = 180; hasFault = false;
+        overlay.style.display = 'none';
+        lights.forEach(l => l.className = 'light');
+    }
+
+    async function processFrame() {
+        if (video.paused || video.ended) return;
+        await pose.send({ image: video });
+        requestAnimationFrame(processFrame);
     }
 </script>
+
 </body>
 </html>
