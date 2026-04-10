@@ -2,87 +2,66 @@
 <html lang="zh">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 举重裁判系统</title>
-    <!-- 使用国内能访问的加速镜像 -->
-    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://fastly.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 裁判测试版</title>
+    <!-- 使用更稳定的 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
-        body { background: #0a0a0f; color: #00f2ff; font-family: sans-serif; margin: 0; text-align: center; }
-        .header { padding: 20px; font-weight: bold; text-shadow: 0 0 10px #00f2ff; border-bottom: 2px solid #ff00ff; }
-        #container { position: relative; width: 100%; max-width: 640px; margin: 10px auto; background: #000; }
-        canvas { width: 100%; height: auto; border: 1px solid #00f2ff; }
-        .controls { padding: 20px; }
-        .btn { background: none; border: 2px solid #00f2ff; color: #00f2ff; padding: 15px 30px; font-size: 18px; cursor: pointer; width: 80%; }
-        .btn:active { background: #00f2ff; color: #000; }
-        #status { color: #f3ea5f; margin: 15px; font-size: 1.2rem; min-height: 1.5em; }
-        #input_video { display: none; }
+        body { background: #000; color: #fff; text-align: center; font-family: sans-serif; padding: 20px; }
+        #v-container { width: 100%; max-width: 500px; margin: auto; border: 2px solid #333; position: relative; }
+        video, canvas { width: 100%; height: auto; }
+        .btn { padding: 15px; background: #007bff; color: white; border: none; width: 100%; margin: 10px 0; font-size: 16px; border-radius: 5px; }
+        #error-log { color: #ff4444; font-size: 14px; margin-top: 10px; border: 1px solid #ff4444; padding: 10px; display: none; }
     </style>
 </head>
 <body>
-    <div class="header">CYBER-JUDGE AI</div>
-    <div id="status">正在准备系统...</div>
-    <div id="container">
+    <h3>AI 举重裁判系统</h3>
+    <div id="v-container">
         <video id="input_video" playsinline></video>
-        <canvas id="output_canvas" width="640" height="480"></canvas>
+        <canvas id="output_canvas"></canvas>
     </div>
-    <div class="controls">
-        <button class="btn" onclick="startCamera()">启动裁判系统</button>
-        <p style="font-size: 12px; color: #666; margin-top: 10px;">提示：请确保在 HTTPS 环境下运行并允许摄像头权限</p>
-    </div>
+    
+    <div id="error-log"></div>
 
-    <script type="module">
+    <button class="btn" onclick="initCamera()">1. 启动摄像头</button>
+    <input type="file" id="file-input" accept="video/*" style="display:none">
+    <button class="btn" style="background:#28a745" onclick="document.getElementById('file-input').click()">2. 导入相册视频</button>
+
+    <script>
         const video = document.getElementById('input_video');
-        const canvas = document.getElementById('output_canvas');
-        const ctx = canvas.getContext('2d');
-        const status = document.getElementById('status');
+        const errorLog = document.getElementById('error-log');
 
-        // 初始化 AI 模型
-        const pose = new Pose({
-            locateFile: (file) => `https://fastly.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        });
+        function showError(msg) {
+            errorLog.style.display = 'block';
+            errorLog.innerText = "错误提示：" + msg;
+        }
 
-        pose.setOptions({
-            modelComplexity: 0, // 手机端使用 0 提高速度
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
+        // 检查环境是否安全
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            showError("必须使用 HTTPS 网址访问，否则无法开启摄像头！当前协议是: " + location.protocol);
+        }
 
-        pose.onResults((results) => {
-            status.innerText = "系统运行中";
-            ctx.save();
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-            
-            if (results.poseLandmarks) {
-                // 画骨架
-                drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00f2ff', lineWidth: 2});
-                drawLandmarks(ctx, results.poseLandmarks, {color: '#ff00ff', lineWidth: 1, radius: 2});
-
-                // 简单的举手判罚逻辑
-                const leftWrist = results.poseLandmarks[15];
-                const leftShoulder = results.poseLandmarks[11];
-                if (leftWrist.y < leftShoulder.y) {
-                    status.innerText = "检测到举铃！支撑中...";
-                    status.style.color = "#fff";
-                } else {
-                    status.style.color = "#f3ea5f";
-                }
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.play();
+                alert("摄像头启动成功！正在加载 AI 模型...");
+                // 这里可以继续初始化 Pose 模型...
+            } catch (err) {
+                showError("无法访问摄像头: " + err.name + " - " + err.message + "\n请检查是否禁用了权限或未使用 Safari 浏览器。");
             }
-            ctx.restore();
-        });
+        }
 
-        window.startCamera = () => {
-            status.innerText = "正在请求摄像头...";
-            const camera = new Camera(video, {
-                onFrame: async () => { await pose.send({image: video}); },
-                width: 640, height: 480
-            });
-            camera.start().catch(err => {
-                status.innerText = "错误：请使用 Safari/Chrome 并允许摄像头权限";
-                console.error(err);
-            });
+        document.getElementById('file-input').onchange = function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                video.src = url;
+                video.play();
+                alert("视频导入成功！");
+            }
         };
     </script>
 </body>
