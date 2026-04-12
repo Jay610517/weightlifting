@@ -13,7 +13,7 @@
         .header { background: #111; padding: 15px; border-bottom: 2px solid var(--pink); font-size: 1.1rem; }
         
         #display-container { position: relative; width: 100%; max-width: 640px; margin: 10px auto; background: #111; border: 1px solid var(--blue); }
-        canvas { width: 100%; height: auto; display: block; transform: scaleX(1); } /* 确保不镜像 */
+        canvas { width: 100%; height: auto; display: block; }
         video { display: none; }
 
         .judge-panel { padding: 15px; background: rgba(20,20,30,0.9); }
@@ -75,7 +75,7 @@
     const overlay = document.getElementById('final-overlay');
     const lights = [document.getElementById('l1'), document.getElementById('l2'), document.getElementById('l3')];
 
-    let minAngle = 180;
+    let minAngleObserved = 180;
     let hasFault = false;
 
     function calcAngle(a, b, c) {
@@ -101,8 +101,8 @@
             document.getElementById('deg-r').innerText = `右: ${Math.round(rA)}°`;
 
             if (lm[15].y < lm[11].y && lm[16].y < lm[12].y) {
-                if (currentMin < minAngle) minAngle = currentMin;
-                document.getElementById('min-angle').innerText = `最大弯曲: ${Math.round(minAngle)}°`;
+                if (currentMin < minAngleObserved) minAngleObserved = currentMin;
+                document.getElementById('min-angle').innerText = `最大弯曲: ${Math.round(minAngleObserved)}°`;
                 if (currentMin < 158) {
                     hasFault = true;
                     statusText.innerText = "⚠️ 检测到补推风险";
@@ -128,7 +128,6 @@
             video.play();
             requestAnimationFrame(processFrame);
         } catch (e) { 
-            alert("无法开启后置镜头，尝试默认开启");
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             video.srcObject = stream;
             video.play();
@@ -140,30 +139,21 @@
         const file = e.target.files[0];
         if (!file) return;
         resetUI();
-        statusText.innerText = "读取视频中，请稍后...";
         video.src = URL.createObjectURL(file);
         video.onloadedmetadata = () => {
             video.play();
             requestAnimationFrame(processFrame);
-            statusText.innerText = "分析中...若画面未动请点击屏幕";
+            statusText.innerText = "正在分析视频...";
         };
         video.onended = () => {
             overlay.style.display = 'block';
-            if (hasFault || minAngle < 158) {
-                overlay.innerText = "NO LIFT 🔴";
-                overlay.style.color = "#ff00ff";
-            } else {
-                overlay.innerText = "GOOD LIFT ⚪";
-                overlay.style.color = "#fff";
-            }
+            overlay.innerText = (hasFault || minAngleObserved < 158) ? "NO LIFT 🔴" : "GOOD LIFT ⚪";
+            overlay.style.color = (hasFault || minAngleObserved < 158) ? "#ff00ff" : "#fff";
         };
     };
 
-    // 点击画面强制激活视频播放（修复黑屏关键）
-    canvas.onclick = () => { video.play(); };
-
     function resetUI() {
-        minAngle = 180; hasFault = false;
+        minAngleObserved = 180; hasFault = false;
         overlay.style.display = 'none';
         lights.forEach(l => l.className = 'light');
     }
